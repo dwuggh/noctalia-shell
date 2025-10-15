@@ -26,8 +26,9 @@ Variants {
     property bool peekHovered: false
     // Keep bar visible while any panel or popup from the bar is open (global)
     readonly property bool holdOpen: PanelService.hasOpenedPopup || (PanelService.openedPanel && ((PanelService.openedPanel.visible === true) || (PanelService.openedPanel.active === true)))
-    // Controls PanelWindow visibility while auto-hide is enabled
-    property bool barWindowVisible: !autoHide
+    // Parallel to Dock: control whether the PanelWindow is loaded at all
+    // Start loaded so BarService.registerBar fires
+    property bool barLoaded: true
     // Respect global animation toggle: no delays when animations are disabled
     readonly property int hideDelay: Settings.data.general.animationDisabled ? 0 : 500
     readonly property int showDelay: Settings.data.general.animationDisabled ? 0 : 120
@@ -41,10 +42,17 @@ Variants {
         root.autoHide = Settings.data.bar.autoHide
         if (root.autoHide) {
           root.hidden = true
-          root.barWindowVisible = false
+          // Defer unloading until after hide animation
+          showTimer.stop()
+          hideTimer.stop()
+          unloadTimer.restart()
         } else {
           root.hidden = false
-          root.barWindowVisible = true
+          // Ensure window is loaded when auto-hide is disabled
+          showTimer.stop()
+          hideTimer.stop()
+          unloadTimer.stop()
+          root.barLoaded = true
         }
       }
     }
@@ -55,8 +63,9 @@ Variants {
       interval: root.showDelay
       repeat: false
       onTriggered: {
-        root.barWindowVisible = true
+        root.barLoaded = true
         root.hidden = false
+        unloadTimer.stop()
       }
     }
 
@@ -72,14 +81,14 @@ Variants {
       }
     }
 
-    // After hide animation, make the window invisible so it doesn't intercept input
+    // After hide animation, unload the window so it doesn't intercept input
     Timer {
       id: unloadTimer
       interval: root.hideAnimationDuration
       repeat: false
       onTriggered: {
         if (root.autoHide && !root.peekHovered && !root.barHovered && !root.holdOpen) {
-          root.barWindowVisible = false
+          root.barLoaded = false
         }
       }
     }
@@ -93,7 +102,8 @@ Variants {
       }
     }
 
-    active: BarService.isVisible && modelData && modelData.name ? (Settings.data.bar.monitors.includes(modelData.name) || (Settings.data.bar.monitors.length === 0)) : false
+    // Only load the PanelWindow when barLoaded
+    active: BarService.isVisible && modelData && modelData.name ? ((Settings.data.bar.monitors.includes(modelData.name) || (Settings.data.bar.monitors.length === 0)) && (!root.autoHide || root.barLoaded)) : false
 
     sourceComponent: PanelWindow {
       screen: modelData || null
@@ -101,9 +111,6 @@ Variants {
       WlrLayershell.namespace: "noctalia-bar"
 
       WlrLayershell.exclusionMode: root.autoHide ? ExclusionMode.Ignore : ExclusionMode.Auto
-
-      // When auto-hide is enabled, actually toggle window visibility after animations
-      visible: root.autoHide ? root.barWindowVisible : true
 
       implicitHeight: (Settings.data.bar.position === "left" || Settings.data.bar.position === "right") ? screen.height : Style.barHeight
       implicitWidth: (Settings.data.bar.position === "left" || Settings.data.bar.position === "right") ? Style.barHeight : screen.width
@@ -196,7 +203,7 @@ Variants {
             if (hovered) {
               showTimer.stop()
               hideTimer.stop()
-              root.barWindowVisible = true
+              root.barLoaded = true
               root.hidden = false
             } else if (!root.peekHovered && !root.holdOpen) {
               hideTimer.restart()
@@ -450,7 +457,7 @@ Variants {
           return
         showTimer.stop()
         hideTimer.stop()
-        root.barWindowVisible = true
+        root.barLoaded = true
         root.hidden = false
       }
       // Popups opening/closing -> start/stop hide timer appropriately
@@ -460,7 +467,7 @@ Variants {
         if (PanelService.hasOpenedPopup) {
           showTimer.stop()
           hideTimer.stop()
-          root.barWindowVisible = true
+          root.barLoaded = true
           root.hidden = false
         } else if (!root.barHovered && !root.peekHovered && !root.holdOpen) {
           hideTimer.restart()
@@ -473,7 +480,7 @@ Variants {
         if (PanelService.openedPanel !== null) {
           showTimer.stop()
           hideTimer.stop()
-          root.barWindowVisible = true
+          root.barLoaded = true
           root.hidden = false
         } else if (!root.barHovered && !root.peekHovered && !PanelService.hasOpenedPopup) {
           hideTimer.restart()
@@ -491,7 +498,7 @@ Variants {
         if ((PanelService.openedPanel.visible === true) || (PanelService.openedPanel.active === true)) {
           showTimer.stop()
           hideTimer.stop()
-          root.barWindowVisible = true
+          root.barLoaded = true
           root.hidden = false
         } else if (!root.barHovered && !root.peekHovered && !PanelService.hasOpenedPopup) {
           hideTimer.restart()
