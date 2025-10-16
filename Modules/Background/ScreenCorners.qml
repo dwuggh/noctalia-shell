@@ -7,7 +7,10 @@ import qs.Services
 import qs.Widgets
 
 Loader {
-  active: Settings.data.general.showScreenCorners
+  // Hide screen corners when bar auto-hide is enabled to avoid
+  // floating corners without a visible bar (visual glitch).
+  // Do not change the user's setting; just disable at runtime.
+  active: Settings.data.general.showScreenCorners && !Settings.data.bar.autoHide
 
   sourceComponent: Variants {
     model: Quickshell.screens
